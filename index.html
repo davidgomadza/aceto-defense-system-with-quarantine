@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aceto Defense System - Clock Array</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: #0f0;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #0f0;
+            border-radius: 5px;
+            z-index: 100;
+        }
+
+        .control-group {
+            margin: 10px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        input[type="range"] {
+            width: 200px;
+        }
+
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 8px 15px;
+            margin: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 3px;
+        }
+
+        button:hover {
+            background: #0d0;
+        }
+
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #f00;
+            border-radius: 5px;
+            min-width: 250px;
+        }
+
+        .stat-line {
+            margin: 5px 0;
+            font-size: 11px;
+        }
+
+        .alert {
+            color: #ff0;
+            font-weight: bold;
+        }
+
+        .success {
+            color: #0f0;
+        }
+
+        #aceto-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 50, 0.9);
+            padding: 10px;
+            border: 2px solid #00f;
+            border-radius: 5px;
+            max-width: 300px;
+            font-size: 10px;
+        }
+
+        .planet-placeholder {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #4a4a8a, #2a2a5a);
+            border: 2px solid #8080ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <h3>ACETO DEFENSE CONTROLS</h3>
+       
+        <div class="control-group">
+            <label>Rotation Speed: <span id="speedVal">1</span>x</label>
+            <input type="range" id="speedControl" min="1" max="10" value="1" step="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>Rotation Angle: <span id="angleVal">33</span>°</label>
+            <input type="range" id="angleControl" min="0" max="360" value="33">
+        </div>
+
+        <div class="control-group">
+            <label>Cooking Plate Distance: <span id="distanceVal">250</span></label>
+            <input type="range" id="distanceControl" min="150" max="400" value="250">
+        </div>
+
+        <div class="control-group">
+            <button id="spawnEnemy">Spawn Test Enemy</button>
+            <button id="autoDetect">Toggle Auto-Detect</button>
+            <button id="reset">Reset System</button>
+        </div>
+    </div>
+
+    <div id="stats">
+        <h3>SYSTEM STATUS</h3>
+        <div class="stat-line">Active Acetos: <span id="acetoCount">252</span></div>
+        <div class="stat-line">Enemies Detected: <span id="enemyCount">0</span></div>
+        <div class="stat-line">Transenders Captured: <span id="capturedCount">0</span></div>
+        <div class="stat-line">Disposed to Orbit: <span id="disposedCount">0</span></div>
+        <div class="stat-line">Distance to Planetbin: <span>3333 km</span></div>
+        <div class="stat-line">Bearing: <span>28° NE</span></div>
+        <div class="stat-line alert" id="alertMsg">SYSTEM ARMED</div>
+    </div>
+
+    <div id="aceto-info">
+        <h4>ACETO PLANET DATA</h4>
+        <div>Mass: 1.27×10²² kg</div>
+        <div>Radius: 1,137 km</div>
+        <div>Composition: 98% N₂ ice</div>
+        <div>Surface Temp: -360°F to -400°F</div>
+        <div>Orbital Period: 248 years</div>
+        <div>Atmosphere: 96% CO₂, 3% N₂</div>
+        <div>Moons: 5 (including Eto)</div>
+        <div style="margin-top:8px; color:#ff0;">Defense Formation: 3×84 units</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+       
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // System state
+        let rotationSpeed = 1;
+        let rotationAngle = 33;
+        let cookingPlateDistance = 250;
+        let currentTime = 0;
+        let autoDetectEnabled = true;
+        let enemies = [];
+        let capturedEnemies = [];
+        let disposedCount = 0;
+
+        // Aceto configurations (3 sets of 84)
+        const acetoSets = [
+            { count: 84, radius: 400, color: '#4a6fff', altitude: 50 },
+            { count: 84, radius: 450, color: '#6a8fff', altitude: 100 },
+            { count: 84, radius: 500, color: '#8aaaff', altitude: 150 }
+        ];
+
+        // 12 hour markers (Aceto planet positions around clock)
+        const hourAcetos = Array.from({ length: 12 }, (_, i) => ({
+            angle: (i * 30) * Math.PI / 180,
+            hour: i === 0 ? 12 : i,
+            distance: 200
+        }));
+
+        // Enemy class
+        class Enemy {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = 8;
+                this.captured = false;
+                this.liftHeight = 0;
+                this.disposing = false;
+                this.disposalProgress = 0;
+            }
+
+            update() {
+                if (!this.captured) {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                   
+                    // Pull towards center
+                    const dx = centerX - this.x;
+                    const dy = centerY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                   
+                    if (dist > 50) {
+                        this.vx += dx / dist * 0.05;
+                        this.vy += dy / dist * 0.05;
+                    }
+                }
+
+                if (this.captured && !this.disposing) {
+                    // Lift 4 meters (visual: 40 pixels)
+                    if (this.liftHeight < 40) {
+                        this.liftHeight += 2;
+                    } else {
+                        this.disposing = true;
+                    }
+                }
+
+                if (this.disposing) {
+                    this.disposalProgress += 0.02;
+                    // Move towards planetbin direction (28° NE, then 333°)
+                    const disposeAngle = this.disposalProgress < 0.5 ? 28 : 333;
+                    const angleRad = (disposeAngle - 90) * Math.PI / 180;
+                    this.x += Math.cos(angleRad) * 5;
+                    this.y += Math.sin(angleRad) * 5;
+                }
+            }
+
+            draw() {
+                ctx.save();
+               
+                if (this.captured) {
+                    // Draw triangle formation around enemy
+                    ctx.strokeStyle = '#ff0';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 3; i++) {
+                        const angle = (i * 120) * Math.PI / 180;
+                        const tx = this.x + Math.cos(angle) * 30;
+                        const ty = this.y + Math.sin(angle) * 30 - this.liftHeight;
+                        ctx.beginPath();
+                        ctx.arc(tx, ty, 5, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw enemy
+                const alpha = this.disposing ? 1 - this.disposalProgress : 1;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = this.captured ? '#f00' : '#ff0000';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y - this.liftHeight, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+               
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                if (this.disposing) {
+                    ctx.fillStyle = '#ff0';
+                    ctx.font = '10px monospace';
+                    ctx.fillText('DISPOSING', this.x - 30, this.y - this.liftHeight - 15);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Draw clock face
+        function drawClock() {
+            // Main clock circle
+            ctx.strokeStyle = '#0f0';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 180, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Clock center
+            ctx.fillStyle = '#0f0';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Hour markers with Aceto planets
+            hourAcetos.forEach(marker => {
+                const x = centerX + Math.cos(marker.angle - Math.PI / 2) * marker.distance;
+                const y = centerY + Math.sin(marker.angle - Math.PI / 2) * marker.distance;
+
+                // Aceto planet representation
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 20);
+                gradient.addColorStop(0, '#6a8fff');
+                gradient.addColorStop(0.7, '#4a6fff');
+                gradient.addColorStop(1, '#2a4f9f');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#8aaaff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Hour label
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(marker.hour, x, y);
+            });
+
+            // Clock hands
+            const seconds = (currentTime % 60);
+            const minutes = (currentTime / 60) % 60;
+            const hours = (currentTime / 3600) % 12;
+
+            // Hour hand
+            drawHand(hours * 30, 80, 6, '#0f0');
+            // Minute hand
+            drawHand(minutes * 6, 120, 4, '#0f0');
+            // Second hand
+            drawHand(seconds * 6 * rotationSpeed, 140, 2, '#ff0');
+        }
+
+        function drawHand(angle, length, width, color) {
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate((angle - 90) * Math.PI / 180);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(length, 0);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw hovering Aceto arrays
+        function drawAcetoArrays() {
+            acetoSets.forEach((set, setIndex) => {
+                for (let i = 0; i < set.count; i++) {
+                    const angle = (i / set.count) * Math.PI * 2 + currentTime * 0.01 * rotationSpeed;
+                    const x = centerX + Math.cos(angle) * set.radius;
+                    const y = centerY + Math.sin(angle) * set.radius;
+
+                    // Aceto with altitude effect
+                    const size = 4 + set.altitude / 50;
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                    gradient.addColorStop(0, set.color);
+                    gradient.addColorStop(1, '#1a1f4f');
+
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Connection lines occasionally
+                    if (i % 10 === 0) {
+                        ctx.strokeStyle = set.color + '30';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(centerX, centerY);
+                        ctx.lineTo(x, y);
+                        ctx.stroke();
+                    }
+                }
+            });
+        }
+
+        // Draw cooking plate (vertical rotating disk)
+        function drawCookingPlate() {
+            const angle = (currentTime * rotationSpeed * 0.5 + rotationAngle) * Math.PI / 180;
+           
+            // Calculate cooking plate dimensions
+            const cubics1 = Math.pow(8, 3) + Math.pow(10, 3);
+            const roots1 = Math.pow(64, 1/2) + Math.pow(100, 1/2);
+            const cubics2 = Math.pow(16, 3) + Math.pow(20, 3);
+            const roots2 = Math.pow(128, 1/2) + Math.pow(100, 1/2);
+           
+            const plateRadius = cookingPlateDistance;
+           
+            // Vertical disk - draw as ellipse due to 90° tilt
+            for (let i = 0; i < 360; i += 15) {
+                const diskAngle = (i + currentTime * rotationSpeed * 2) * Math.PI / 180;
+                const x = centerX + Math.cos(angle) * plateRadius;
+                const y = centerY + Math.sin(angle) * plateRadius;
+               
+                // Vertical component
+                const z = Math.sin(diskAngle) * 100;
+                const diskSize = 80 * Math.abs(Math.cos(diskAngle));
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(1, 0.3); // Perspective effect
+               
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, diskSize);
+                gradient.addColorStop(0, '#ff6600');
+                gradient.addColorStop(0.5, '#ff3300');
+                gradient.addColorStop(1, '#cc0000');
+
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                ctx.arc(0, 0, diskSize, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+
+                // Energy waves
+                if (i % 45 === 0) {
+                    ctx.strokeStyle = '#ff6600';
+                    ctx.lineWidth = 2;
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, plateRadius + Math.sin(currentTime * 0.1) * 20, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Detect and capture enemies
+        function detectEnemies() {
+            enemies.forEach(enemy => {
+                if (!enemy.captured && !enemy.disposing) {
+                    const dist = Math.sqrt(
+                        Math.pow(enemy.x - centerX, 2) +
+                        Math.pow(enemy.y - centerY, 2)
+                    );
+
+                    // Auto-capture within range
+                    if (autoDetectEnabled && dist < 100) {
+                        enemy.captured = true;
+                        capturedEnemies.push(enemy);
+                        updateStats();
+                        setAlert('TRANSENDER CAPTURED!');
+                    }
+                }
+
+                // Remove disposed enemies
+                if (enemy.disposing && enemy.disposalProgress >= 1) {
+                    const index = enemies.indexOf(enemy);
+                    if (index > -1) {
+                        enemies.splice(index, 1);
+                        disposedCount++;
+                        updateStats();
+                        setAlert('DISPOSED TO ORBIT 7628435', true);
+                    }
+                }
+            });
+        }
+
+        // Animation loop
+        function animate() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            drawAcetoArrays();
+            drawCookingPlate();
+            drawClock();
+
+            // Update and draw enemies
+            enemies.forEach(enemy => {
+                enemy.update();
+                enemy.draw();
+            });
+
+            detectEnemies();
+
+            currentTime += 0.1 * rotationSpeed;
+            requestAnimationFrame(animate);
+        }
+
+        // Update stats display
+        function updateStats() {
+            document.getElementById('enemyCount').textContent = enemies.length;
+            document.getElementById('capturedCount').textContent = capturedEnemies.length;
+            document.getElementById('disposedCount').textContent = disposedCount;
+        }
+
+        function setAlert(message, success = false) {
+            const alertMsg = document.getElementById('alertMsg');
+            alertMsg.textContent = message;
+            alertMsg.className = success ? 'stat-line success' : 'stat-line alert';
+            setTimeout(() => {
+                alertMsg.textContent = 'SYSTEM ARMED';
+                alertMsg.className = 'stat-line alert';
+            }, 2000);
+        }
+
+        // Event listeners
+        document.getElementById('speedControl').addEventListener('input', (e) => {
+            rotationSpeed = parseFloat(e.target.value);
+            document.getElementById('speedVal').textContent = rotationSpeed;
+        });
+
+        document.getElementById('angleControl').addEventListener('input', (e) => {
+            rotationAngle = parseInt(e.target.value);
+            document.getElementById('angleVal').textContent = rotationAngle;
+        });
+
+        document.getElementById('distanceControl').addEventListener('input', (e) => {
+            cookingPlateDistance = parseInt(e.target.value);
+            document.getElementById('distanceVal').textContent = cookingPlateDistance;
+        });
+
+        document.getElementById('spawnEnemy').addEventListener('click', () => {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 300 + Math.random() * 200;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            enemies.push(new Enemy(x, y));
+            updateStats();
+            setAlert('ENEMY DETECTED!');
+        });
+
+        document.getElementById('autoDetect').addEventListener('click', () => {
+            autoDetectEnabled = !autoDetectEnabled;
+            setAlert(autoDetectEnabled ? 'AUTO-DETECT: ON' : 'AUTO-DETECT: OFF', autoDetectEnabled);
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            enemies = [];
+            capturedEnemies = [];
+            disposedCount = 0;
+            updateStats();
+            setAlert('SYSTEM RESET', true);
+        });
+
+        // Automatic enemy spawning for demonstration
+        setInterval(() => {
+            if (autoDetectEnabled && Math.random() < 0.1) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 350;
+                const x = centerX + Math.cos(angle) * distance;
+                const y = centerY + Math.sin(angle) * distance;
+                enemies.push(new Enemy(x, y));
+                updateStats();
+            }
+        }, 3000);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html> s <!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Aceto Clock — Interactive Artifact</title>
+  <style>
+    :root{--w:800px}
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;display:flex;gap:20px;min-height:100vh;align-items:center;justify-content:center;background:#071029;color:#e6f0ff;padding:20px;box-sizing:border-box}
+    .app{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;justify-content:center;max-width:1200px}
+    .stage{width:var(--w);height:var(--w);background:linear-gradient(180deg,#0b1730 0%, #071029 60%);border-radius:12px;position:relative;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6);flex-shrink:0}
+   
+    /* ground clock */
+    .ground{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62%;height:62%;border-radius:50%;background:radial-gradient(circle at 40% 30%, rgba(255,255,255,.03), rgba(255,255,255,0) 35%), repeating-conic-gradient(from 0deg,#143058 0 15deg,#0f2a43 15deg 30deg);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 -20px 60px rgba(0,0,0,.6)}
+    .clock-center{width:25%;height:25%;border-radius:50%;background:linear-gradient(180deg,#ffd89b,#ff9aa2);display:flex;align-items:center;justify-content:center;font-weight:700;color:#05203a}
+    .clock-center .time{font-size:clamp(16px, 2.5vw, 22px)}
+    .clock-center > div > div:last-child{font-size:clamp(10px, 1.5vw, 12px)}
+
+    /* Aceto planets (12) */
+    .aceto{position:absolute;left:50%;top:50%;transform-origin:center center;pointer-events:auto}
+    .aceto .planet{width:clamp(36px, 6vw, 48px);height:clamp(36px, 6vw, 48px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#bfc7ff,#86a7ff);box-shadow:0 6px 18px rgba(0,0,60,.6);border:2px solid rgba(255,255,255,.06);font-size:clamp(9px, 1.4vw, 11px)}
+    .aceto .label{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);font-size:clamp(10px, 1.5vw, 12px);white-space:nowrap}
+
+    /* enemy / transender visual */
+    .enemy{position:absolute;width:28px;height:28px;border-radius:50%;background:#ff5050;border:2px solid #fff;box-shadow:0 6px 18px rgba(255,80,80,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px}
+    .transender{background:#ff8c42}
+    .mits{background:#c542ff}
+    .ajes{background:#42ffd2}
+
+    /* mini Acetos groups (3x84) */
+    .group{position:absolute;pointer-events:none}
+    .group .mini{width:8px;height:8px;border-radius:50%;background:#7fb0ff;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+
+    /* cooking-plate wheel (vertical plane) */
+    .wheel{position:absolute;width:80%;height:80%;left:50%;top:50%;transform:translate(-50%,-50%) rotateX(90deg);transform-origin:center center;pointer-events:none}
+    .wheel .ring{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:81.25%;height:81.25%;border-radius:50%;border:18px solid rgba(200,200,200,.06);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+
+    /* UI */
+    .controls{width:100%;max-width:360px;padding:16px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));box-shadow:0 8px 30px rgba(0,0,0,.6)}
+    .controls h3{margin:0 0 10px 0;font-size:18px}
+    .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+    label{font-size:13px;color:#bcd5ff;min-width:120px}
+    input[type=range]{flex:1;min-width:120px}
+    input[type=checkbox]{width:auto}
+    button{padding:8px 10px;border-radius:8px;border:none;background:#2a67ff;color:white;cursor:pointer;font-size:13px}
+    button:hover{background:#4179ff}
+    .btnRemove{padding:4px 8px;font-size:11px;margin-left:8px}
+    .small{font-size:12px;color:#bcd5ff;min-width:30px}
+    .legend{position:absolute;left:12px;top:12px;background:rgba(0,0,0,.4);padding:8px;border-radius:8px;font-size:clamp(10px, 1.5vw, 12px)}
+    .detectedList{max-height:120px;overflow:auto;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;font-size:12px}
+    .detectedList code{background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:3px}
+   
+    @media (max-width: 900px) {
+      :root{--w:min(90vw, 600px)}
+      .app{flex-direction:column;align-items:center}
+      .controls{max-width:100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="stage" id="stage">
+      <div class="legend" id="legend">Planetbin ▶ 3333 km NE (28°)</div>
+      <div class="ground" id="ground">
+        <div class="clock-center">
+          <div>
+            <div class="time" id="clockTime">00:00:00</div>
+            <div>Central Clock</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aceto container (rotating) -->
+      <div id="acetoContainer"></div>
+
+      <!-- wheel (cooking-plate like) rotates in vertical plane -->
+      <div class="wheel" id="wheel">
+        <div class="ring"></div>
+      </div>
+
+    </div>
+
+    <div class="controls">
+      <h3>Controls</h3>
+      <div class="row"><label>Clock sync</label><input id="syncToggle" type="checkbox" checked></div>
+      <div class="row"><label>Auto-detect</label><input id="autoDetect" type="checkbox" checked></div>
+      <div class="row"><label>Auto-suppress</label><input id="autoSuppress" type="checkbox" checked></div>
+
+      <div class="row"><label>Rotation angle (°)</label><input id="angleRange" type="range" min="0" max="360" value="33"><div class="small" id="angleVal">33</div></div>
+      <div class="row"><label>Rotation velocity</label><input id="velRange" type="range" min="0" max="12" step="0.1" value="1.2"><div class="small" id="velVal">1.2</div></div>
+      <div class="row"><label>Rotation radius</label><input id="radiusRange" type="range" min="150" max="320" value="260"><div class="small" id="radVal">260</div></div>
+      <div class="row"><label>Transender boost</label><input id="boostRange" type="range" min="0" max="3" step="0.1" value="0.5"><div class="small" id="boostVal">0.5</div></div>
+      <div class="row"><label>Transender count</label><div class="small" id="transCount">0</div></div>
+
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button id="spawnEnemy">Spawn enemy</button>
+        <button id="spawnTransender">Spawn transender</button>
+        <button id="clearAll">Clear</button>
+      </div>
+
+      <hr style="margin:12px 0;border-color:rgba(255,255,255,.03)">
+
+      <div style="font-size:13px;color:#bcd5ff;margin-bottom:6px">Detected Entities</div>
+      <div class="detectedList" id="detectedList">(auto-detecting elements with class <code>transender</code>, <code>mits</code>, <code>ajes</code>, or attribute <code>data-entity</code>)</div>
+
+      <hr style="margin:12px 0;border-color:rgba(255,255,255,.03)">
+      <div style="font-size:13px;color:#bcd5ff;margin-bottom:6px">Developer API (call from console)</div>
+      <div style="font-size:11px;color:#99b6ff;word-break:break-all">create.sendtransenderstotheorbit.start()</div>
+      <div style="font-size:11px;color:#99b6ff">create.suppressAllDetected()</div>
+      <div style="font-size:11px;color:#99b6ff">create.theorbit7628435.start()</div>
+    </div>
+  </div>
+
+  <script>
+    /***** Utility & Configuration based on user spec *****/
+    const stage = document.getElementById('stage');
+    const ground = document.getElementById('ground');
+    const clockTime = document.getElementById('clockTime');
+    const wheel = document.getElementById('wheel');
+    const acetoContainer = document.getElementById('acetoContainer');
+    const detectedList = document.getElementById('detectedList');
+
+    // Planetbin coordinates (for visualization only)
+    const planetbin = {x: window.innerWidth + 2000, y: -2000, info: '3333km NE (28°)'};
+
+    // Main config - adjusted for responsive sizing
+    const config = {
+      acetoCount: 12,
+      setsOfAcetoGroups: 3, // 3 sets
+      acetosPerSet: 84,
+      liftHeight: 4, // meters (visual units)
+      radius: 260, // adjusted default
+      rotationAngleDeg: 33,
+      rotationVelocity: 1.2,
+      transenderBoostPer: 0.5
+    };
+
+    // runtime state
+    let state = {
+      acetoRotation: 0, // degrees — clockwise
+      wheelRotation: 0,
+      transenderCount: 0,
+      effectiveDegPerSec: 6,
+      wheelDegPerSec: 3
+    };
+
+    // Detection structures
+    const detected = new Map(); // id -> {el,type,time}
+
+    // Create 12 Acetos around clock (every 2 hours -> 12 positions) inside container
+    function createAcetos() {
+      acetoContainer.innerHTML = '';
+      for (let i=0;i<config.acetoCount;i++){
+        const el = document.createElement('div');
+        el.className='aceto';
+        el.dataset.index = i;
+        el.dataset.baseAngle = (i/12)*360; // degrees
+        el.style.width='80px';
+        el.style.height='80px';
+        el.innerHTML = `<div class="planet" title="Aceto ${i}"><div>Aceto</div></div><div class="label">${(i*2)%24}:00</div>`;
+        acetoContainer.appendChild(el);
+      }
+      positionAcetos();
+    }
+
+    function positionAcetos(){
+      const acetos = Array.from(document.querySelectorAll('.aceto'));
+      acetos.forEach((el)=>{
+        const base = Number(el.dataset.baseAngle);
+        const angle = (base + state.acetoRotation) * Math.PI/180 - Math.PI/2;
+        el.style.transform = `translate(-50%,-50%) translate(${Math.cos(angle)*config.radius}px, ${Math.sin(angle)*config.radius}px)`;
+      });
+    }
+
+    // spawn enemy/transender for testing
+    let entityIdCounter = 0;
+
+    function spawnEnemy(x,y){
+      const el = document.createElement('div');
+      el.className='enemy';
+      el.style.left = (x-14)+'px';
+      el.style.top = (y-14)+'px';
+      el.dataset.id = 'E'+(++entityIdCounter);
+      el.innerText = 'E';
+      stage.appendChild(el);
+      // enemies are not auto-detected by default
+    }
+
+    function spawnTransender(x,y){
+      const el = document.createElement('div');
+      el.className='enemy transender';
+      el.style.left = (x-14)+'px';
+      el.style.top = (y-14)+'px';
+      el.dataset.id = 'T'+(++entityIdCounter);
+      el.dataset.entity = 'transender';
+      el.innerText = 'T';
+      stage.appendChild(el);
+      // detection will pick this up (MutationObserver)
+    }
+
+    // Detection & suppression behavior
+    function isDetectable(el){
+      if(!el || el.nodeType !== 1) return false;
+      const cls = (el.className||'').split(' ').filter(Boolean);
+      const attrs = el.getAttribute('data-entity');
+      if(cls.includes('transender')||cls.includes('mits')||cls.includes('ajes')) return true;
+      if(attrs && ['transender','mits','ajes'].includes(attrs)) return true;
+      return false;
+    }
+
+    function registerDetected(el){
+      const id = el.dataset.id || ('auto'+(++entityIdCounter));
+      const type = el.dataset.entity || (el.className.match(/transender|mits|ajes/)||[])[0] || 'unknown';
+      if(detected.has(id)) return; // already tracked
+      detected.set(id,{el,type,time:Date.now()});
+      refreshDetectedList();
+      // auto-suppress if enabled
+      if(document.getElementById('autoSuppress').checked){
+        suppressEntity(id);
+      }
+    }
+
+    function refreshDetectedList(){
+      let html = '';
+      detected.forEach((v,k)=>{
+        html += `<div style="margin:4px 0"><strong>${k}</strong> — ${v.type} — ${new Date(v.time).toLocaleTimeString()} <button data-id="${k}" class="btnRemove">suppress</button></div>`;
+      });
+      detectedList.innerHTML = html || '<em>no detected entities</em>';
+      // attach handlers
+      Array.from(detectedList.querySelectorAll('.btnRemove')).forEach(b=>{
+        b.onclick = ()=>{ suppressEntity(b.dataset.id); };
+      });
+    }
+
+    function suppressEntity(id){
+      const record = detected.get(id);
+      if(!record) return;
+      const el = record.el;
+      // visually form triangle & dispose
+      const rect = el.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      const sx = rect.left - stageRect.left + rect.width/2;
+      const sy = rect.top - stageRect.top + rect.height/2;
+      triggerAcetoTriangle({x:sx,y:sy,id:id});
+      // remove element
+      try{ el.remove(); }catch(e){}
+      detected.delete(id);
+      refreshDetectedList();
+      // increment transender count and update speed if it's a transender
+      if(record.type === 'transender'){
+        state.transenderCount += 1; document.getElementById('transCount').innerText = state.transenderCount; updateDynamicSpeed();
+      }
+    }
+
+    // MutationObserver to detect new elements
+    const observer = new MutationObserver((mutations)=>{
+      if(!document.getElementById('autoDetect').checked) return;
+      mutations.forEach(m=>{
+        m.addedNodes.forEach(n=>{
+          if(isDetectable(n)) registerDetected(n);
+          // also check children
+          if(n.querySelectorAll) Array.from(n.querySelectorAll('*')).forEach(ch=>{ if(isDetectable(ch)) registerDetected(ch); });
+        });
+        // attribute changes
+        if(m.type === 'attributes' && isDetectable(m.target)) registerDetected(m.target);
+      });
+    });
+    observer.observe(stage,{childList:true,subtree:true,attributes:true,attributeFilter:['class','data-entity']});
+
+    // trigger Aceto groups: create 3 groups of 84 mini Acetos that form triangle
+    function triggerAcetoTriangle(enemy){
+      const groups = [];
+      for (let g=0;g<3;g++){
+        const group = document.createElement('div');
+        group.className='group';
+        group.style.left='0px';group.style.top='0px';
+        stage.appendChild(group);
+        groups.push(group);
+        for (let i=0;i<config.acetosPerSet;i++){
+          const m = document.createElement('div');
+          m.className='mini';
+          const spread = 40 + g*20;
+          const ang = Math.random()*Math.PI*2;
+          const r = Math.random()*spread;
+          m.style.position='absolute';
+          m.style.left=(enemy.x + Math.cos(ang)*r - 4)+'px';
+          m.style.top=(enemy.y + Math.sin(ang)*r - 4)+'px';
+          group.appendChild(m);
+        }
+      }
+
+      const baseRadius = 120;
+      const triangleVerts = [0,120,240].map(a=>({x: enemy.x + Math.cos((a+config.rotationAngleDeg)*Math.PI/180)*baseRadius, y: enemy.y + Math.sin((a+config.rotationAngleDeg)*Math.PI/180)*baseRadius}));
+
+      groups.forEach((group,gi)=>{
+        const minis = Array.from(group.children);
+        const cx = triangleVerts[gi].x; const cy = triangleVerts[gi].y;
+        minis.forEach((m,idx)=>{
+          const angle = (idx / minis.length) * Math.PI*2;
+          const rr = 20 + (idx % 7) * 2;
+          const tx = cx + Math.cos(angle)*rr - 4;
+          const ty = cy + Math.sin(angle)*rr - 4 - (config.liftHeight*6);
+          m.animate([
+            {left: m.style.left, top: m.style.top},
+            {left: tx + 'px', top: ty + 'px'}
+          ],{duration:1200 + Math.random()*400, fill:'forwards', easing:'cubic-bezier(.2,.9,.2,1)'});
+        });
+      });
+
+      setTimeout(()=>{
+        groups.forEach((group)=>{
+          const minis = Array.from(group.children);
+          minis.forEach((m,idx)=>{
+            const sx = parseFloat(m.style.left) + 4;
+            const sy = parseFloat(m.style.top) + 4;
+            const dx = planetbin.x - sx;
+            const dy = planetbin.y - sy;
+            const dur = 1600 + Math.random()*800;
+            const anim = m.animate([
+              {transform: 'translate(0,0) rotate(0deg) scale(1)', opacity:1},
+              {transform: 'translate(' + (dx)+'px,'+ (dy)+'px) rotate(333deg) scale(.2)', opacity:0}
+            ],{duration:dur, fill:'forwards', easing:'linear'});
+            anim.onfinish = ()=>{ try{ m.remove(); }catch(e){} }
+          });
+        });
+        setTimeout(()=>{ groups.forEach(g=>g.remove()); }, 2200);
+      },1600);
+    }
+
+    // Create acetos and initial positions
+    createAcetos();
+    updateDynamicSpeed();
+
+    // Update clock time (shows seconds) and drive rotation if sync enabled
+    function updateClock(){
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const ss = String(now.getSeconds()).padStart(2,'0');
+      clockTime.innerText = hh+':'+mm+':'+ss;
+    }
+    updateClock(); setInterval(updateClock,1000);
+
+    // Animation loop to update rotation using per-second rhythm
+    let lastTick = performance.now();
+    function tick(now){
+      const dt = (now - lastTick)/1000; // seconds
+      lastTick = now;
+      const sync = document.getElementById('syncToggle').checked;
+
+      if(sync){
+        state.acetoRotation += (state.effectiveDegPerSec || 6) * dt; // clockwise
+        state.wheelRotation += (state.wheelDegPerSec || 3) * dt;
+      } else {
+        state.acetoRotation += (6 * config.rotationVelocity) * dt;
+        state.wheelRotation += (6 * (config.rotationVelocity*0.6)) * dt;
+      }
+
+      state.acetoRotation %= 360;
+      state.wheelRotation %= 360;
+      positionAcetos();
+      wheel.style.transform = `translate(-50%,-50%) rotateX(90deg) rotateZ(${state.wheelRotation}deg)`;
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame((t)=>{ lastTick = t; requestAnimationFrame(tick); });
+
+    // UI bindings
+    document.getElementById('spawnEnemy').addEventListener('click', ()=>{
+      const rect = stage.getBoundingClientRect();
+      const sx = rect.width/2 + (Math.random()*400-200);
+      const sy = rect.height/2 + (Math.random()*400-200);
+      spawnEnemy(sx,sy);
+    });
+    document.getElementById('spawnTransender').addEventListener('click', ()=>{
+      const rect = stage.getBoundingClientRect();
+      const sx = rect.width/2 + (Math.random()*400-200);
+      const sy = rect.height/2 + (Math.random()*400-200);
+      spawnTransender(sx,sy);
+    });
+    document.getElementById('clearAll').addEventListener('click', ()=>{
+      document.querySelectorAll('.enemy').forEach(e=>e.remove());
+      document.querySelectorAll('.group').forEach(g=>g.remove());
+      state.transenderCount = 0; document.getElementById('transCount').innerText = 0; updateDynamicSpeed();
+      detected.clear(); refreshDetectedList();
+    });
+
+    // ranges
+    const angleRange = document.getElementById('angleRange'); const angleVal = document.getElementById('angleVal');
+    angleRange.addEventListener('input', ()=>{ config.rotationAngleDeg = Number(angleRange.value); angleVal.innerText = angleRange.value; });
+    const velRange = document.getElementById('velRange'); const velVal = document.getElementById('velVal');
+    velRange.addEventListener('input', ()=>{ config.rotationVelocity = Number(velRange.value); velVal.innerText = velRange.value; updateDynamicSpeed(); });
+    const radiusRange = document.getElementById('radiusRange'); const radVal = document.getElementById('radVal');
+    radiusRange.addEventListener('input', ()=>{ config.radius = Number(radiusRange.value); radVal.innerText = radiusRange.value; positionAcetos(); });
+    const boostRange = document.getElementById('boostRange'); const boostVal = document.getElementById('boostVal');
+    boostRange.addEventListener('input', ()=>{ config.transenderBoostPer = Number(boostRange.value); boostVal.innerText = boostRange.value; updateDynamicSpeed(); });
+
+    // click-to-spawn enemy/transender on stage
+    stage.addEventListener('click', (ev)=>{
+      if(ev.target.closest('.controls')) return;
+      const rect = stage.getBoundingClientRect();
+      const sx = ev.clientX - rect.left; const sy = ev.clientY - rect.top;
+      // quick spawn transender if holding shift
+      if(ev.shiftKey) spawnTransender(sx,sy); else spawnEnemy(sx,sy);
+    });
+
+    /***** Expose developer-friendly functions emulating user's pseudo-code *****/
+    window.create = {
+      sendtransenderstotheorbit: {
+        start: function(){ console.log('create.sendtransenderstotheorbit.start() called — sending all enemies to orbit (visual).');
+          document.querySelectorAll('.enemy').forEach((el)=>{
+            const sx = el.offsetLeft; const sy = el.offsetTop;
+            const dx = stage.clientWidth/2; const dy = -1200;
+            el.animate([{left:sx+'px', top:sy+'px'},{left:dx+'px', top:dy+'px'}],{duration:2000, fill:'forwards', easing:'ease-in'});
+            setTimeout(()=>el.remove(),2300);
+          });
+        }
+      },
+      suppressAllDetected: function(){
+        console.log('create.suppressAllDetected() called — suppressing all detected entities');
+        Array.from(detected.keys()).forEach(id=>{ suppressEntity(id); });
+      },
+      'minus28×': function(){ return 'applied; see create.starttheorbit functions'; },
+      starttheorbit: function(){ console.log('create.starttheorbit( ) called — starting orbit sequence (visual).'); }
+    };
+    create.theorbit7628435 = { start: ()=>{ console.log('create.theorbit7628435.start() called — orbit sequence (visual placeholder)'); } };
+
+    console.log('Aceto Clock interactive artifact loaded. Auto-detect & auto-suppress available. Clock-synced clockwise motion enabled.');
+
+    /***** Helper: dynamic speed update *****/
+    function updateDynamicSpeed(){
+      const basePerSec = 6; // seconds hand degrees per second
+      const boost = state.transenderCount * config.transenderBoostPer;
+      state.effectiveDegPerSec = basePerSec * config.rotationVelocity + boost;
+      state.wheelDegPerSec = basePerSec * (config.rotationVelocity*0.6) + boost*0.8;
+    }
+  </script>
+</body>
+</html> 
